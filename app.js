@@ -1,8 +1,12 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "goethe_b2_wordcharts_v1";
+  const STORAGE_KEY = "goethe_b2_wordcharts_v2";
+  const LEGACY_STORAGE_KEY = "goethe_b2_wordcharts_v1";
+  const GIST_FILENAME = "goethe-b2-wordcharts-progress.json";
+  const GIST_DESCRIPTION = "Goethe B2 Word Charts Progress";
   const SYNC_DEBOUNCE_MS = 3500;
+  const MIN_PUSH_INTERVAL_MS = 4000;
   const allWords = Array.isArray(window.GOETHE_B2_WORDS) ? window.GOETHE_B2_WORDS : [];
 
   const state = {
@@ -21,12 +25,16 @@
     updatedAt: 0,
     dirty: false,
     syncKey: "",
+    gistId: "",
     syncStatus: "local", // "local" | "synced" | "pending" | "error"
     theme: "light"
   };
 
   let syncTimer = null;
   let isSyncInFlight = false;
+  let lastPushAt = 0;
+  let consecutiveFailures = 0;
+  let syncHalted = false;
 
   // DOM Elements
   const el = {
@@ -113,7 +121,7 @@
 
   function loadStorage() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.learned)) state.learned = new Set(parsed.learned);
@@ -121,6 +129,7 @@
         if (typeof parsed.updatedAt === "number") state.updatedAt = parsed.updatedAt;
         if (typeof parsed.dirty === "boolean") state.dirty = parsed.dirty;
         if (typeof parsed.syncKey === "string") state.syncKey = parsed.syncKey;
+        if (typeof parsed.gistId === "string") state.gistId = parsed.gistId;
         if (parsed.theme === "dark" || parsed.theme === "light") state.theme = parsed.theme;
       } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
         state.theme = "dark";
@@ -146,6 +155,7 @@
           updatedAt: state.updatedAt,
           dirty: state.dirty,
           syncKey: state.syncKey,
+          gistId: state.gistId,
           theme: state.theme
         })
       );
@@ -155,25 +165,106 @@
   }
 
   function canUseCloudSync() {
-    return Boolean(state.syncKey) && location.protocol.startsWith("http");
+    return Boolean(state.syncKey);
   }
 
-  async function fetchRemoteProgress(syncKey) {
-    const res = await fetch("/api/progress", {
+  function githubHeaders(token) {
+    return {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    };
+  }
+
+  function parseGistProgress(gist) {
+    const file = gist && gist.files && gist.files[GIST_FILENAME];
+    if (!file || !file.content) {
+      return { learned: [], starred: [], updatedAt: 0 };
+    }
+    try {
+      const parsed = JSON.parse(file.content);
+      return {
+        learned: Array.isArray(parsed.learned) ? parsed.learned : [],
+        starred: Array.isArray(parsed.starred) ? parsed.starred : [],
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0
+      };
+    } catch {
+      return { learned: [], starred: [], updatedAt: 0 };
+    }
+  }
+
+  async function resolveGist(token, knownGistId = "") {
+    if (knownGistId) {
+      const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(knownGistId)}`, {
+        method: "GET",
+        headers: githubHeaders(token),
+        cache: "no-store"
+      });
+      if (res.status === 401 || res.status === 403) throw new Error("UNAUTHORIZED");
+      if (res.ok) return res.json();
+    }
+
+    // Search existing private gist with our filename
+    const listRes = await fetch("https://api.github.com/gists?per_page=100", {
       method: "GET",
-      headers: { "x-sync-key": syncKey },
+      headers: githubHeaders(token),
       cache: "no-store"
     });
-    if (res.status === 401) throw new Error("UNAUTHORIZED");
-    if (!res.ok) throw new Error("SERVER_ERROR");
-    return res.json();
+    if (listRes.status === 401 || listRes.status === 403) throw new Error("UNAUTHORIZED");
+    if (!listRes.ok) throw new Error("SERVER_ERROR");
+
+    const gists = await listRes.json();
+    const existing = Array.isArray(gists)
+      ? gists.find((g) => g && g.files && Object.prototype.hasOwnProperty.call(g.files, GIST_FILENAME))
+      : null;
+
+    if (existing) {
+      const detailRes = await fetch(`https://api.github.com/gists/${encodeURIComponent(existing.id)}`, {
+        method: "GET",
+        headers: githubHeaders(token),
+        cache: "no-store"
+      });
+      if (detailRes.status === 401 || detailRes.status === 403) throw new Error("UNAUTHORIZED");
+      if (!detailRes.ok) throw new Error("SERVER_ERROR");
+      return detailRes.json();
+    }
+
+    // Create a brand-new private gist
+    const initialContent = JSON.stringify({
+      learned: Array.from(state.learned),
+      starred: Array.from(state.starred),
+      updatedAt: state.updatedAt || 0
+    });
+    const createRes = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: githubHeaders(token),
+      body: JSON.stringify({
+        description: GIST_DESCRIPTION,
+        public: false,
+        files: {
+          [GIST_FILENAME]: { content: initialContent }
+        }
+      })
+    });
+    if (createRes.status === 401 || createRes.status === 403) throw new Error("UNAUTHORIZED");
+    if (!createRes.ok) throw new Error("SERVER_ERROR");
+    return createRes.json();
   }
 
-  async function pushSync({ keepalive = false } = {}) {
+  async function pushSync({ keepalive = false, manual = false } = {}) {
     if (!canUseCloudSync() || (isSyncInFlight && !keepalive)) return false;
+    if (syncHalted && !manual) return false;
+
+    const now = Date.now();
+    if (!manual && !keepalive && now - lastPushAt < MIN_PUSH_INTERVAL_MS) {
+      schedulePushSync();
+      return false;
+    }
+
     clearTimeout(syncTimer);
     syncTimer = null;
     isSyncInFlight = true;
+    lastPushAt = now;
     setSyncStatus("pending", "Menyimpan...");
 
     const payload = {
@@ -183,26 +274,42 @@
     };
 
     try {
-      const res = await fetch("/api/progress", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-sync-key": state.syncKey
-        },
-        body: JSON.stringify(payload),
+      if (!state.gistId) {
+        const gist = await resolveGist(state.syncKey);
+        state.gistId = gist.id;
+      }
+
+      const res = await fetch(`https://api.github.com/gists/${encodeURIComponent(state.gistId)}`, {
+        method: "PATCH",
+        headers: githubHeaders(state.syncKey),
+        body: JSON.stringify({
+          files: {
+            [GIST_FILENAME]: { content: JSON.stringify(payload) }
+          }
+        }),
         keepalive
       });
-      if (res.status === 401) {
-        setSyncStatus("error", "Kode Salah");
+
+      if (res.status === 401 || res.status === 403) {
+        consecutiveFailures++;
+        syncHalted = true;
+        setSyncStatus("error", "Token Salah");
         return false;
       }
       if (!res.ok) throw new Error("SERVER_ERROR");
+
+      consecutiveFailures = 0;
+      syncHalted = false;
       state.dirty = false;
       state.updatedAt = payload.updatedAt;
       saveStorage();
       setSyncStatus("synced", "Tersinkron");
       return true;
     } catch {
+      consecutiveFailures++;
+      if (consecutiveFailures >= 2) {
+        syncHalted = true;
+      }
       setSyncStatus("error", "Gagal Sync");
       return false;
     } finally {
@@ -211,7 +318,7 @@
   }
 
   function schedulePushSync() {
-    if (!canUseCloudSync()) return;
+    if (!canUseCloudSync() || syncHalted) return;
     setSyncStatus("pending", "Menyimpan...");
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => {
@@ -219,14 +326,21 @@
     }, SYNC_DEBOUNCE_MS);
   }
 
-  async function syncOnStartupOrManual({ mergeIfBoth = false } = {}) {
+  async function syncOnStartupOrManual({ mergeIfBoth = false, manual = false } = {}) {
     if (!canUseCloudSync()) return { ok: false, reason: "NO_KEY" };
+    if (syncHalted && !manual) return { ok: false, reason: "HALTED" };
+
     setSyncStatus("pending", "Sinkronisasi...");
     try {
-      const remote = await fetchRemoteProgress(state.syncKey);
-      const remoteUpdated = typeof remote.updatedAt === "number" ? remote.updatedAt : 0;
-      const remoteLearned = Array.isArray(remote.learned) ? remote.learned : [];
-      const remoteStarred = Array.isArray(remote.starred) ? remote.starred : [];
+      const gist = await resolveGist(state.syncKey, state.gistId);
+      state.gistId = gist.id;
+      const remote = parseGistProgress(gist);
+      const remoteUpdated = remote.updatedAt;
+      const remoteLearned = remote.learned;
+      const remoteStarred = remote.starred;
+
+      consecutiveFailures = 0;
+      syncHalted = false;
 
       if (mergeIfBoth && (state.learned.size > 0 || state.starred.size > 0) && remoteUpdated > 0) {
         state.learned = new Set([...remoteLearned, ...state.learned]);
@@ -235,9 +349,9 @@
         state.dirty = true;
         saveStorage();
         render();
-        await pushSync();
+        await pushSync({ manual: true });
       } else if (state.dirty && state.updatedAt >= remoteUpdated) {
-        await pushSync();
+        await pushSync({ manual: true });
       } else if (remoteUpdated > state.updatedAt || (!state.dirty && remoteUpdated > 0)) {
         state.learned = new Set(remoteLearned);
         state.starred = new Set(remoteStarred);
@@ -250,14 +364,18 @@
         state.updatedAt = state.updatedAt || Date.now();
         state.dirty = true;
         saveStorage();
-        await pushSync();
+        await pushSync({ manual: true });
       } else {
+        saveStorage();
         setSyncStatus("synced", "Tersinkron");
       }
       return { ok: true };
     } catch (err) {
+      consecutiveFailures++;
+      if (consecutiveFailures >= 2) syncHalted = true;
       if (err && err.message === "UNAUTHORIZED") {
-        setSyncStatus("error", "Kode Salah");
+        syncHalted = true;
+        setSyncStatus("error", "Token Salah");
         return { ok: false, reason: "UNAUTHORIZED" };
       }
       setSyncStatus("error", "Offline");
@@ -756,33 +874,32 @@
       e.preventDefault();
       const key = el.syncKeyInput.value.trim();
       if (!key) {
-        showDialogMsg("Masukkan Kode Sinkron terlebih dahulu.", "is-error");
-        return;
-      }
-      if (!location.protocol.startsWith("http")) {
-        showDialogMsg("Sinkronisasi cloud hanya aktif saat dibuka lewat web/Vercel.", "is-error");
+        showDialogMsg("Masukkan GitHub Token (izin gist) terlebih dahulu.", "is-error");
         return;
       }
 
       el.btnConnectSync.disabled = true;
-      showDialogMsg("Menghubungkan...", "");
+      showDialogMsg("Menghubungkan ke GitHub Gist Private...", "");
       try {
-        await fetchRemoteProgress(key);
         const isFirstConnect = state.syncKey !== key;
+        const gist = await resolveGist(key, isFirstConnect ? "" : state.gistId);
         state.syncKey = key;
+        state.gistId = gist.id;
+        syncHalted = false;
+        consecutiveFailures = 0;
         saveStorage();
-        const res = await syncOnStartupOrManual({ mergeIfBoth: isFirstConnect });
+        const res = await syncOnStartupOrManual({ mergeIfBoth: isFirstConnect, manual: true });
         updateSyncDialogUI();
         if (res.ok) {
-          showDialogMsg("Terhubung & tersinkronisasi!", "is-ok");
+          showDialogMsg("Terhubung ke Gist Private & tersinkronisasi!", "is-ok");
         } else {
-          showDialogMsg("Gagal menyinkronkan dengan server.", "is-error");
+          showDialogMsg("Gagal menyinkronkan dengan GitHub Gist.", "is-error");
         }
       } catch (err) {
         if (err && err.message === "UNAUTHORIZED") {
-          showDialogMsg("Kode sinkron salah. Periksa kembali kode Anda.", "is-error");
+          showDialogMsg("Token tidak valid atau tidak memiliki izin gist.", "is-error");
         } else {
-          showDialogMsg("Tidak dapat terhubung ke server sinkron.", "is-error");
+          showDialogMsg("Tidak dapat terhubung ke GitHub API.", "is-error");
         }
       } finally {
         el.btnConnectSync.disabled = false;
@@ -791,33 +908,38 @@
 
     el.btnSyncNow.addEventListener("click", async () => {
       el.btnSyncNow.disabled = true;
+      syncHalted = false;
+      consecutiveFailures = 0;
       showDialogMsg("Menyinkronkan...", "");
-      const res = await syncOnStartupOrManual();
+      const res = await syncOnStartupOrManual({ manual: true });
       el.btnSyncNow.disabled = false;
       if (res.ok) showDialogMsg("Sinkronisasi selesai!", "is-ok");
-      else if (res.reason === "UNAUTHORIZED") showDialogMsg("Kode sinkron salah.", "is-error");
+      else if (res.reason === "UNAUTHORIZED") showDialogMsg("Token salah atau tidak punya izin gist.", "is-error");
       else showDialogMsg("Gagal menyinkronkan.", "is-error");
     });
 
     el.btnDisconnectSync.addEventListener("click", () => {
       clearTimeout(syncTimer);
       state.syncKey = "";
+      state.gistId = "";
       state.dirty = false;
+      syncHalted = false;
+      consecutiveFailures = 0;
       el.syncKeyInput.value = "";
       saveStorage();
       setSyncStatus("local", "Lokal");
       updateSyncDialogUI();
-      showDialogMsg("Perangkat ini diputuskan dari sinkronisasi cloud.", "");
+      showDialogMsg("Perangkat ini diputuskan dari sinkronisasi Gist.", "");
     });
 
-    // Flush pending sync when leaving/backgrounding tab
+    // Flush pending sync when leaving/backgrounding tab (respects circuit breaker)
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden" && state.dirty && canUseCloudSync()) {
+      if (document.visibilityState === "hidden" && state.dirty && !syncHalted && canUseCloudSync()) {
         pushSync({ keepalive: true });
       }
     });
     window.addEventListener("pagehide", () => {
-      if (state.dirty && canUseCloudSync()) {
+      if (state.dirty && !syncHalted && canUseCloudSync()) {
         pushSync({ keepalive: true });
       }
     });

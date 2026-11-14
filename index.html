@@ -197,14 +197,15 @@
   <dialog class="sync-dialog" id="syncDialog" aria-labelledby="syncDialogTitle">
     <form method="dialog" class="sync-dialog-card" id="syncForm">
       <div class="sync-dialog-head">
-        <h2 id="syncDialogTitle">Sinkronisasi Antar Perangkat</h2>
+        <h2 id="syncDialogTitle">Sinkronisasi GitHub Gist Private</h2>
         <button type="button" class="icon-btn" id="btnCloseSync" aria-label="Tutup">✕</button>
       </div>
       <p class="sync-dialog-desc">
-        Masukkan <strong>Kode Sinkron</strong> agar status <em>Sudah Hafal</em> dan <em>Tandai Sulit</em> tersinkronisasi otomatis di semua perangkat Anda (HP &amp; Laptop).
+        Progres <em>Sudah Hafal</em> dan <em>Tandai Sulit</em> disimpan di <strong>GitHub Gist Private</strong> milik Anda sendiri (0 pemakaian server/Blob Vercel).
+        <a href="https://github.com/settings/tokens/new?scopes=gist&description=Goethe%20B2%20Word%20Charts" target="_blank" rel="noopener noreferrer" class="sync-link">Buat Token khusus Gist di GitHub ↗</a>
       </p>
-      <label class="sync-label" for="syncKeyInput">Kode Sinkron</label>
-      <input type="password" id="syncKeyInput" class="sync-input" placeholder="Masukkan kode sinkron..." autocomplete="off" />
+      <label class="sync-label" for="syncKeyInput">GitHub Personal Access Token (izin <code>gist</code> saja)</label>
+      <input type="password" id="syncKeyInput" class="sync-input" placeholder="ghp_... atau github_pat_..." autocomplete="off" />
       <p class="sync-msg hidden" id="syncDialogMsg"></p>
       <div class="sync-dialog-actions">
         <button type="submit" class="btn-primary" id="btnConnectSync">Hubungkan &amp; Sinkronkan</button>

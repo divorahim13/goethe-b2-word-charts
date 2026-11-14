@@ -219,6 +219,18 @@ select {
   color: var(--text-muted);
 }
 
+.sync-link {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sync-link:hover {
+  text-decoration: underline;
+}
+
 .sync-label {
   font-size: 0.82rem;
   font-weight: 600;
