@@ -49,6 +49,8 @@
     progressFill: document.getElementById("progressFill"),
     progressPct: document.getElementById("progressPct"),
     searchInput: document.getElementById("searchInput"),
+    btnToggleFilters: document.getElementById("btnToggleFilters"),
+    filtersRow: document.getElementById("filtersRow"),
     filterTopic: document.getElementById("filterTopic"),
     filterPos: document.getElementById("filterPos"),
     filterStatus: document.getElementById("filterStatus"),
@@ -63,7 +65,16 @@
     btnNextMobile: document.getElementById("btnNextMobile"),
     btnFlipMobile: document.getElementById("btnFlipMobile"),
     cardViewport: document.getElementById("cardViewport"),
+    deckStack1: document.getElementById("deckStack1"),
     flashcard: document.getElementById("flashcard"),
+    frontPipNum: document.getElementById("frontPipNum"),
+    frontPipSuit: document.getElementById("frontPipSuit"),
+    frontPipNumBot: document.getElementById("frontPipNumBot"),
+    frontPipSuitBot: document.getElementById("frontPipSuitBot"),
+    backPipNum: document.getElementById("backPipNum"),
+    backPipSuit: document.getElementById("backPipSuit"),
+    backPipNumBot: document.getElementById("backPipNumBot"),
+    backPipSuitBot: document.getElementById("backPipSuitBot"),
     frontBadges: document.getElementById("frontBadges"),
     backBadges: document.getElementById("backBadges"),
     frontContent: document.getElementById("frontContent"),
@@ -553,6 +564,7 @@
     if (state.currentIndex >= total) state.currentIndex = Math.max(0, total - 1);
 
     const hasWords = total > 0;
+    el.cardViewport.classList.toggle("is-empty", !hasWords);
     el.flashcard.classList.toggle("hidden", !hasWords);
     el.emptyState.classList.toggle("hidden", hasWords);
     el.btnPrev.disabled = !hasWords || total <= 1;
@@ -584,9 +596,22 @@
     const item = words[state.currentIndex];
     const origIdx = allWords.indexOf(item);
     const id = getWordId(item, origIdx >= 0 ? origIdx : state.currentIndex);
+    const article = detectArticle(item);
 
     el.cardCounter.textContent = `${state.currentIndex + 1} / ${total}`;
-    el.flashcard.setAttribute("data-article", detectArticle(item));
+    el.flashcard.setAttribute("data-article", article);
+
+    const pipNo = `#${String(state.currentIndex + 1).padStart(2, "0")}`;
+    const frontSuit = article ? article.toUpperCase() : (item.pos ? item.pos.slice(0, 3).toUpperCase() : "B2");
+    const backSuit = state.direction === "DE_ID" ? "ID" : "DE";
+    el.frontPipNum.textContent = pipNo;
+    el.frontPipNumBot.textContent = pipNo;
+    el.frontPipSuit.textContent = frontSuit;
+    el.frontPipSuitBot.textContent = frontSuit;
+    el.backPipNum.textContent = pipNo;
+    el.backPipNumBot.textContent = pipNo;
+    el.backPipSuit.textContent = backSuit;
+    el.backPipSuitBot.textContent = backSuit;
 
     renderBadges(el.frontBadges, item);
     renderBadges(el.backBadges, item);
@@ -687,22 +712,54 @@
     render();
   }
 
-  function animateSlide(cls) {
-    el.cardViewport.classList.remove("slide-next", "slide-prev");
-    void el.cardViewport.offsetWidth;
-    el.cardViewport.classList.add(cls);
+  let didSwipeRecently = false;
+
+  function launchGhostCard(exitDir, startTransform = "") {
+    if (!el.flashcard || el.flashcard.classList.contains("hidden")) return;
+    const ghost = el.flashcard.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+    ghost.classList.remove("is-dragging", "is-springing", "is-entering");
+    ghost.classList.add("is-ghost");
+    if (startTransform) {
+      ghost.style.transform = startTransform;
+    }
+    el.cardViewport.appendChild(ghost);
+    void ghost.offsetWidth;
+
+    const targetX = exitDir > 0 ? "135%" : "-135%";
+    const targetRot = exitDir > 0 ? "14deg" : "-14deg";
+    ghost.style.transform = `translate3d(${targetX}, 22px, 0) rotate(${targetRot})`;
+    ghost.style.opacity = "0";
+
+    setTimeout(() => {
+      ghost.remove();
+    }, 300);
   }
 
-  function stepCard(delta) {
+  function animateSlide(exitDir) {
+    launchGhostCard(exitDir);
+    el.flashcard.classList.remove("is-entering");
+    void el.flashcard.offsetWidth;
+    el.flashcard.classList.add("is-entering");
+  }
+
+  function stepCard(delta, startTransform = "") {
     const words = getFilteredWords();
     if (words.length <= 1) return;
+    const exitDir = delta > 0 ? -1 : 1;
+    launchGhostCard(exitDir, startTransform);
     state.currentIndex = (state.currentIndex + delta + words.length) % words.length;
     state.isFlipped = false;
-    animateSlide(delta > 0 ? "slide-next" : "slide-prev");
+    el.flashcard.style.transform = "";
+    el.flashcard.classList.remove("is-dragging", "is-springing", "is-entering");
+    void el.flashcard.offsetWidth;
+    el.flashcard.classList.add("is-entering");
     renderCards();
   }
 
   function flipCard() {
+    if (didSwipeRecently) return;
     const words = getFilteredWords();
     if (words.length === 0) return;
     if (state.autoReveal) {
@@ -786,6 +843,11 @@
       state.theme = state.theme === "dark" ? "light" : "dark";
       applyTheme();
       saveStorage();
+    });
+
+    el.btnToggleFilters.addEventListener("click", () => {
+      const open = el.filtersRow.classList.toggle("is-open");
+      el.btnToggleFilters.setAttribute("aria-expanded", String(open));
     });
 
     el.searchInput.addEventListener("input", (e) => {
@@ -944,31 +1006,97 @@
       }
     });
 
-    // Touch swipe on card viewport
+    // Live poker-card touch drag + swipe
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchStartTime = 0;
+    let dragMode = null; // null | "horizontal" | "vertical"
+    let currentDx = 0;
+
     el.cardViewport.addEventListener(
       "touchstart",
       (e) => {
-        if (e.changedTouches.length !== 1) return;
+        if (e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) return;
         touchStartX = e.changedTouches[0].clientX;
         touchStartY = e.changedTouches[0].clientY;
+        touchStartTime = Date.now();
+        dragMode = null;
+        currentDx = 0;
+        el.flashcard.classList.remove("is-springing", "is-entering");
       },
       { passive: true }
     );
 
     el.cardViewport.addEventListener(
-      "touchend",
+      "touchmove",
       (e) => {
-        if (e.changedTouches.length !== 1) return;
+        if (e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) return;
         const dx = e.changedTouches[0].clientX - touchStartX;
         const dy = e.changedTouches[0].clientY - touchStartY;
-        if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-          stepCard(dx < 0 ? 1 : -1);
+
+        if (!dragMode) {
+          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+          dragMode = Math.abs(dx) > Math.abs(dy) * 1.1 ? "horizontal" : "vertical";
+        }
+
+        if (dragMode === "horizontal") {
+          e.preventDefault();
+          currentDx = dx;
+          const words = getFilteredWords();
+          const dampedDx = words.length <= 1 ? dx * 0.28 : dx;
+          const rot = dampedDx * 0.048;
+          const arcY = Math.min(18, Math.abs(dampedDx) * 0.07);
+          el.flashcard.classList.add("is-dragging");
+          el.flashcard.style.transform = `translate3d(${dampedDx}px, ${arcY}px, 0) rotate(${rot}deg)`;
+
+          if (el.deckStack1) {
+            const progress = Math.min(1, Math.abs(dampedDx) / 140);
+            const scale = 0.955 + progress * 0.045;
+            const y = 7 - progress * 7;
+            const deckRot = -1.4 + progress * 1.4;
+            el.deckStack1.style.transform = `translateY(${y}px) scale(${scale}) rotate(${deckRot}deg)`;
+          }
         }
       },
-      { passive: true }
+      { passive: false }
     );
+
+    function finishTouchDrag() {
+      if (dragMode === "horizontal") {
+        const elapsed = Date.now() - touchStartTime;
+        const velocity = Math.abs(currentDx) / Math.max(1, elapsed);
+        const words = getFilteredWords();
+        const shouldSlide = words.length > 1 && (Math.abs(currentDx) > 65 || (Math.abs(currentDx) > 28 && velocity > 0.35));
+
+        didSwipeRecently = true;
+        setTimeout(() => {
+          didSwipeRecently = false;
+        }, 260);
+
+        if (el.deckStack1) {
+          el.deckStack1.style.transform = "";
+        }
+
+        if (shouldSlide) {
+          const delta = currentDx < 0 ? 1 : -1;
+          const startTransform = el.flashcard.style.transform;
+          stepCard(delta, startTransform);
+        } else {
+          el.flashcard.classList.remove("is-dragging");
+          el.flashcard.classList.add("is-springing");
+          el.flashcard.style.transform = "translate3d(0, 0, 0) rotate(0deg)";
+          setTimeout(() => {
+            el.flashcard.classList.remove("is-springing");
+            el.flashcard.style.transform = "";
+          }, 280);
+        }
+      }
+      dragMode = null;
+      currentDx = 0;
+    }
+
+    el.cardViewport.addEventListener("touchend", finishTouchDrag, { passive: true });
+    el.cardViewport.addEventListener("touchcancel", finishTouchDrag, { passive: true });
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {

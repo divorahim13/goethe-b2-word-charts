@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Word Charts interaktif untuk menghafal kosakata (Wortschatz) Goethe-Zertifikat B2 — ringan, cepat, dan responsif." />
   <title>Goethe B2 — Word Charts</title>
   <link rel="stylesheet" href="styles.css" />
@@ -52,12 +52,15 @@
 
     <!-- Filter & Controls Toolbar -->
     <section class="toolbar" aria-label="Filter dan pencarian">
-      <div class="search-box">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="search" id="searchInput" placeholder="Cari kata Jerman atau arti..." autocomplete="off" />
+      <div class="search-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="searchInput" placeholder="Cari kata Jerman atau arti..." autocomplete="off" />
+        </div>
+        <button type="button" class="chip-btn filter-toggle-btn" id="btnToggleFilters" aria-expanded="false">Filter</button>
       </div>
 
-      <div class="filters-row">
+      <div class="filters-row" id="filtersRow">
         <select id="filterTopic" aria-label="Filter tema">
           <option value="all">Semua Tema</option>
         </select>
@@ -98,43 +101,62 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         </button>
 
-        <!-- Card Stage (swipeable + clickable) -->
+        <!-- Poker Card Deck Stage (swipeable + clickable) -->
         <div class="card-viewport" id="cardViewport">
+          <div class="deck-stack deck-stack-2" aria-hidden="true"></div>
+          <div class="deck-stack deck-stack-1" id="deckStack1" aria-hidden="true"></div>
+
           <article class="flashcard" id="flashcard" tabindex="0" role="button" aria-label="Kartu kata. Tekan Spasi atau klik untuk melihat arti.">
             <div class="card-inner" id="cardInner">
               <!-- Front Face -->
               <div class="card-face card-front" id="cardFront">
-                <div class="card-top">
-                  <div class="badges" id="frontBadges"></div>
-                  <div class="card-quick-actions">
+                <div class="poker-frame">
+                  <div class="card-top">
+                    <div class="corner-pip" id="frontPipTop">
+                      <span class="pip-num" id="frontPipNum">#01</span>
+                      <span class="pip-suit" id="frontPipSuit">B2</span>
+                    </div>
+                    <div class="badges" id="frontBadges"></div>
                     <button type="button" class="mini-btn" id="btnSpeakFront" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                     </button>
                   </div>
-                </div>
 
-                <div class="card-center" id="frontContent"></div>
+                  <div class="card-center" id="frontContent"></div>
 
-                <div class="card-bottom">
-                  <span class="flip-hint">Klik kartu atau tekan Spasi untuk melihat arti</span>
+                  <div class="card-bottom">
+                    <span class="flip-hint">Tap kartu untuk arti • Geser untuk ganti</span>
+                    <div class="corner-pip corner-pip-bottom" id="frontPipBottom" aria-hidden="true">
+                      <span class="pip-num" id="frontPipNumBot">#01</span>
+                      <span class="pip-suit" id="frontPipSuitBot">B2</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <!-- Back Face -->
               <div class="card-face card-back" id="cardBack">
-                <div class="card-top">
-                  <div class="badges" id="backBadges"></div>
-                  <div class="card-quick-actions">
+                <div class="poker-frame poker-frame-back">
+                  <div class="card-top">
+                    <div class="corner-pip" id="backPipTop">
+                      <span class="pip-num" id="backPipNum">#01</span>
+                      <span class="pip-suit" id="backPipSuit">ID</span>
+                    </div>
+                    <div class="badges" id="backBadges"></div>
                     <button type="button" class="mini-btn" id="btnSpeakBack" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                     </button>
                   </div>
-                </div>
 
-                <div class="card-center" id="backContent"></div>
+                  <div class="card-center" id="backContent"></div>
 
-                <div class="card-bottom">
-                  <span class="flip-hint">Klik untuk kembali ke sisi depan</span>
+                  <div class="card-bottom">
+                    <span class="flip-hint">Tap untuk kembali ke sisi depan</span>
+                    <div class="corner-pip corner-pip-bottom" id="backPipBottom" aria-hidden="true">
+                      <span class="pip-num" id="backPipNumBot">#01</span>
+                      <span class="pip-suit" id="backPipSuitBot">ID</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
