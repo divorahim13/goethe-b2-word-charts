@@ -450,5 +450,59 @@ window.GOETHE_B2_WORDS = [
     pos: "Nomen",
     topic: "Lesson 1 Erwachsene",
     meaning: "masa studi/tinggal di luar negeri"
+  },
+  {
+    id: "les-erw-061",
+    word: "verpflichten (sich zu + Dat.)",
+    pos: "Verb",
+    topic: "Lesson 1 Erwachsene",
+    meaning: "mewajibkan; mengikatkan diri secara resmi/kontrak",
+    example: "Die Teilnehmer verpflichten sich, die Hausordnung einzuhalten.",
+    exampleId: "Para peserta wajib mematuhi tata tertib.",
+    note: "Parafrase B2: müssen / eine Pflicht haben / verbindlich sein / verpflichtet sein zu"
+  },
+  {
+    id: "les-erw-062",
+    word: "untersagt",
+    pos: "Adjektiv",
+    topic: "Lesson 1 Erwachsene",
+    meaning: "dilarang (secara resmi / peraturan)",
+    example: "Das Rauchen ist im gesamten Gebäude strengstens untersagt.",
+    exampleId: "Merokok dilarang keras di seluruh gedung.",
+    note: "Parafrase B2: verboten / nicht erlaubt / nicht gestattet / darf nicht (dari: untersagen)"
+  },
+  {
+    id: "les-erw-063",
+    word: "die Frist",
+    article: "die",
+    plural: "die Fristen",
+    pos: "Nomen",
+    topic: "Lesson 1 Erwachsene",
+    meaning: "tenggat waktu, batas waktu resmi",
+    example: "Bitte beachten Sie die Frist für die Anmeldung bis zum 30. Mai.",
+    exampleId: "Harap perhatikan batas waktu pendaftaran hingga 30 Mei.",
+    note: "Parafrase B2: der Termin / die Zeitspanne / bis spätestens ... / eine Frist einhalten"
+  },
+  {
+    id: "les-erw-064",
+    word: "die Erstattung",
+    article: "die",
+    plural: "die Erstattungen",
+    pos: "Nomen",
+    topic: "Lesson 1 Erwachsene",
+    meaning: "pengembalian uang/biaya (refund), penggantian biaya",
+    example: "Bei einer Stornierung erhalten Sie eine vollständige Erstattung der Kosten.",
+    exampleId: "Jika membatalkan, Anda mendapat pengembalian biaya penuh.",
+    note: "Parafrase B2: die Rückzahlung / das Geld zurückbekommen / Kosten zurückerhalten (dari: erstatten)"
+  },
+  {
+    id: "les-erw-065",
+    word: "Verantwortung übernehmen (für + Akk.)",
+    pos: "Redemittel",
+    topic: "Lesson 1 Erwachsene",
+    meaning: "mengambil / memikul tanggung jawab (atas sesuatu)",
+    example: "Jeder Mitarbeiter muss für seine Aufgaben selbst Verantwortung übernehmen.",
+    exampleId: "Setiap karyawan harus bertanggung jawab sendiri atas tugasnya.",
+    note: "Parafrase B2: verantwortlich sein für / für etwas geradestehen / die Haftung übernehmen"
   }
 ];
