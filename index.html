@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Word Charts interaktif untuk menghafal kosakata (Wortschatz) Goethe-Zertifikat B2 — ringan, cepat, dan responsif." />
+  <title>Goethe B2 — Word Charts</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-badge" aria-hidden="true">B2</span>
+        <div>
+          <h1 class="brand-title">Goethe B2 Word Charts</h1>
+          <p class="brand-sub">Wortschatz &amp; Redemittel Trainer</p>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button type="button" class="sync-pill" id="btnSyncModal" title="Sinkronisasi progres antar perangkat">
+          <span class="sync-dot" id="syncDot" aria-hidden="true"></span>
+          <span id="syncStatusText">Lokal</span>
+        </button>
+        <div class="view-switch" role="group" aria-label="Mode tampilan">
+          <button type="button" class="seg-btn active" data-view="cards" id="btnViewCards">Kartu</button>
+          <button type="button" class="seg-btn" data-view="list" id="btnViewList">Daftar</button>
+        </div>
+        <button type="button" class="icon-btn" id="btnTheme" title="Ganti tema terang/gelap" aria-label="Ganti tema terang atau gelap">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Progress & Stats Bar -->
+    <section class="stats-bar" aria-label="Progres belajar">
+      <div class="stats-meta">
+        <span class="stat-pill"><strong id="statTotal">0</strong> Kosakata</span>
+        <span class="stat-pill stat-learned"><strong id="statLearned">0</strong> Hafal</span>
+        <span class="stat-pill stat-starred"><strong id="statStarred">0</strong> Sulit</span>
+      </div>
+      <div class="progress-wrap" title="Persentase kata yang sudah dihafal">
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+    </section>
+
+    <!-- Filter & Controls Toolbar -->
+    <section class="toolbar" aria-label="Filter dan pencarian">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" id="searchInput" placeholder="Cari kata Jerman atau arti..." autocomplete="off" />
+      </div>
+
+      <div class="filters-row">
+        <select id="filterTopic" aria-label="Filter tema">
+          <option value="all">Semua Tema</option>
+        </select>
+
+        <select id="filterPos" aria-label="Filter jenis kata">
+          <option value="all">Semua Jenis</option>
+        </select>
+
+        <select id="filterStatus" aria-label="Filter status hafalan">
+          <option value="all">Semua Status</option>
+          <option value="unlearned">Belum Hafal</option>
+          <option value="learned">Sudah Hafal</option>
+          <option value="starred">Ditandai Sulit</option>
+        </select>
+
+        <button type="button" class="chip-btn" id="btnDirection" title="Balik arah kartu (DE → ID / ID → DE)">
+          <span id="directionLabel">DE → ID</span>
+        </button>
+
+        <button type="button" class="chip-btn" id="btnShuffle" title="Acak urutan kartu">
+          Acak
+        </button>
+      </div>
+    </section>
+
+    <!-- Main Study Area: Card Slide View -->
+    <main class="main-stage" id="cardsView">
+      <div class="deck-header">
+        <span class="counter" id="cardCounter">0 / 0</span>
+        <label class="toggle-inline">
+          <input type="checkbox" id="toggleAutoReveal" />
+          <span>Langsung tampilkan arti</span>
+        </label>
+      </div>
+
+      <div class="carousel-row">
+        <button type="button" class="nav-arrow" id="btnPrev" aria-label="Kartu sebelumnya" title="Sebelumnya (Panah Kiri)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+
+        <!-- Card Stage (swipeable + clickable) -->
+        <div class="card-viewport" id="cardViewport">
+          <article class="flashcard" id="flashcard" tabindex="0" role="button" aria-label="Kartu kata. Tekan Spasi atau klik untuk melihat arti.">
+            <div class="card-inner" id="cardInner">
+              <!-- Front Face -->
+              <div class="card-face card-front" id="cardFront">
+                <div class="card-top">
+                  <div class="badges" id="frontBadges"></div>
+                  <div class="card-quick-actions">
+                    <button type="button" class="mini-btn" id="btnSpeakFront" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="card-center" id="frontContent"></div>
+
+                <div class="card-bottom">
+                  <span class="flip-hint">Klik kartu atau tekan Spasi untuk melihat arti</span>
+                </div>
+              </div>
+
+              <!-- Back Face -->
+              <div class="card-face card-back" id="cardBack">
+                <div class="card-top">
+                  <div class="badges" id="backBadges"></div>
+                  <div class="card-quick-actions">
+                    <button type="button" class="mini-btn" id="btnSpeakBack" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="card-center" id="backContent"></div>
+
+                <div class="card-bottom">
+                  <span class="flip-hint">Klik untuk kembali ke sisi depan</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Empty State (shown when dataset is empty or filter matches 0 items) -->
+          <div class="empty-state hidden" id="emptyState">
+            <div class="empty-icon" aria-hidden="true">🗂️</div>
+            <h2 id="emptyTitle">Belum ada kosakata Goethe B2</h2>
+            <p id="emptyDesc">
+              Daftar word charts masih kosong. Kirimkan daftar kata atau materi B2 Anda kapan saja untuk dimasukkan ke sini.
+            </p>
+            <button type="button" class="chip-btn hidden" id="btnResetFilters">Reset Filter</button>
+          </div>
+        </div>
+
+        <button type="button" class="nav-arrow" id="btnNext" aria-label="Kartu berikutnya" title="Berikutnya (Panah Kanan)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      <!-- Mobile Bottom Nav + Card Mastery Actions -->
+      <div class="card-controls">
+        <div class="mobile-arrows">
+          <button type="button" class="chip-btn" id="btnPrevMobile">← Sebelumnya</button>
+          <button type="button" class="chip-btn" id="btnFlipMobile">Lihat Arti</button>
+          <button type="button" class="chip-btn" id="btnNextMobile">Berikutnya →</button>
+        </div>
+
+        <div class="mastery-actions" id="masteryActions">
+          <button type="button" class="action-btn btn-star" id="btnStar" title="Tandai kata sulit (Tombol S)">
+            ★ <span id="starText">Tandai Sulit</span>
+          </button>
+          <button type="button" class="action-btn btn-learned" id="btnLearned" title="Tandai sudah hafal (Tombol H)">
+            ✓ <span id="learnedText">Sudah Hafal</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Keyboard Shortcuts Legend -->
+      <footer class="shortcuts-bar" aria-hidden="true">
+        <span><kbd>←</kbd> <kbd>→</kbd> Geser</span>
+        <span><kbd>Spasi</kbd> Balik Arti</span>
+        <span><kbd>H</kbd> Hafal</span>
+        <span><kbd>S</kbd> Sulit</span>
+        <span><kbd>A</kbd> Audio</span>
+      </footer>
+    </main>
+
+    <!-- List / Chart Overview Mode -->
+    <main class="list-stage hidden" id="listView">
+      <div class="list-header">
+        <span id="listCount">0 kata ditampilkan</span>
+        <button type="button" class="text-btn" id="btnResetProgress">Reset Progres Hafalan</button>
+      </div>
+      <div class="word-table-wrap" id="wordListContainer"></div>
+    </main>
+  </div>
+
+  <dialog class="sync-dialog" id="syncDialog" aria-labelledby="syncDialogTitle">
+    <form method="dialog" class="sync-dialog-card" id="syncForm">
+      <div class="sync-dialog-head">
+        <h2 id="syncDialogTitle">Sinkronisasi Antar Perangkat</h2>
+        <button type="button" class="icon-btn" id="btnCloseSync" aria-label="Tutup">✕</button>
+      </div>
+      <p class="sync-dialog-desc">
+        Masukkan <strong>Kode Sinkron</strong> agar status <em>Sudah Hafal</em> dan <em>Tandai Sulit</em> tersinkronisasi otomatis di semua perangkat Anda (HP &amp; Laptop).
+      </p>
+      <label class="sync-label" for="syncKeyInput">Kode Sinkron</label>
+      <input type="password" id="syncKeyInput" class="sync-input" placeholder="Masukkan kode sinkron..." autocomplete="off" />
+      <p class="sync-msg hidden" id="syncDialogMsg"></p>
+      <div class="sync-dialog-actions">
+        <button type="submit" class="btn-primary" id="btnConnectSync">Hubungkan &amp; Sinkronkan</button>
+        <button type="button" class="chip-btn hidden" id="btnSyncNow">Sinkronkan Sekarang</button>
+        <button type="button" class="text-btn hidden" id="btnDisconnectSync">Putuskan Perangkat Ini</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="data/words.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
