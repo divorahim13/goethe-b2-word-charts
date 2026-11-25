@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Word Charts interaktif untuk menghafal kosakata (Wortschatz) Goethe-Zertifikat B2 — ringan, cepat, dan responsif." />
   <title>Goethe B2 — Word Charts</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <div class="app-shell">
@@ -35,14 +35,15 @@
       </div>
     </header>
 
-    <!-- Progress & Stats Bar -->
+    <!-- Context-Aware Progress & Stats Bar (Rule 8: Reduce Memory Load) -->
     <section class="stats-bar" aria-label="Progres belajar">
       <div class="stats-meta">
-        <span class="stat-pill"><strong id="statTotal">0</strong> Kosakata</span>
+        <span class="stat-scope" id="statScope">Semua</span>
+        <span class="stat-pill"><strong id="statTotal">0</strong> Kata</span>
         <span class="stat-pill stat-learned"><strong id="statLearned">0</strong> Hafal</span>
         <span class="stat-pill stat-starred"><strong id="statStarred">0</strong> Sulit</span>
       </div>
-      <div class="progress-wrap" title="Persentase kata yang sudah dihafal">
+      <div class="progress-wrap" title="Persentase kata yang sudah dihafal pada cakupan aktif">
         <div class="progress-track">
           <div class="progress-fill" id="progressFill" style="width: 0%"></div>
         </div>
@@ -50,12 +51,16 @@
       </div>
     </section>
 
+    <!-- Quick 1-Tap Topic Switcher (Rule 2: Shortcuts & Rule 7: User Control) -->
+    <nav class="topic-pills" id="topicPills" aria-label="Pilih tema cepat"></nav>
+
     <!-- Filter & Controls Toolbar -->
     <section class="toolbar" aria-label="Filter dan pencarian">
       <div class="search-row">
         <div class="search-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="searchInput" placeholder="Cari kata Jerman atau arti..." autocomplete="off" />
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="searchInput" placeholder="Cari kata Jerman, arti, atau parafrase... (/)" autocomplete="off" />
+          <button type="button" class="search-clear hidden" id="btnClearSearch" aria-label="Hapus pencarian" title="Hapus pencarian (Esc)">✕</button>
         </div>
         <button type="button" class="chip-btn filter-toggle-btn" id="btnToggleFilters" aria-expanded="false">Filter</button>
       </div>
@@ -76,24 +81,45 @@
           <option value="starred">Ditandai Sulit</option>
         </select>
 
-        <button type="button" class="chip-btn" id="btnDirection" title="Balik arah kartu (DE → ID / ID → DE)">
+        <button type="button" class="chip-btn" id="btnDirection" title="Balik arah kartu (Tombol D)">
           <span id="directionLabel">DE → ID</span>
         </button>
 
-        <button type="button" class="chip-btn" id="btnShuffle" title="Acak urutan kartu">
+        <button type="button" class="chip-btn" id="btnShuffle" title="Acak urutan kartu (Tombol R)">
           Acak
         </button>
+
+        <button type="button" class="chip-btn btn-reset-inline hidden" id="btnResetFiltersTop" title="Reset semua filter aktif">
+          Reset
+        </button>
+      </div>
+    </section>
+
+    <!-- Closure Banner when 100% of current topic is learned (Rule 4: Closure) -->
+    <section class="completion-banner hidden" id="completionBanner" role="status" aria-live="polite">
+      <div class="completion-text">
+        <strong id="completionTitle">Tuntas! Semua kosakata sudah hafal.</strong>
+        <span id="completionDesc">Pertahankan ingatan dengan mengacak ulang atau pilih tema berikutnya.</span>
+      </div>
+      <div class="completion-actions">
+        <button type="button" class="chip-btn" id="btnCompletionShuffle">Acak Ulang</button>
+        <button type="button" class="chip-btn" id="btnCompletionAll">Semua Tema</button>
       </div>
     </section>
 
     <!-- Main Study Area: Card Slide View -->
     <main class="main-stage" id="cardsView">
       <div class="deck-header">
-        <span class="counter" id="cardCounter">0 / 0</span>
-        <label class="toggle-inline">
-          <input type="checkbox" id="toggleAutoReveal" />
-          <span>Langsung tampilkan arti</span>
-        </label>
+        <div class="deck-header-top">
+          <span class="counter" id="cardCounter">0 / 0</span>
+          <label class="toggle-inline">
+            <input type="checkbox" id="toggleAutoReveal" />
+            <span>Langsung tampilkan arti</span>
+          </label>
+        </div>
+        <div class="deck-progress-track" aria-hidden="true">
+          <div class="deck-progress-fill" id="deckProgressFill" style="width: 0%"></div>
+        </div>
       </div>
 
       <div class="carousel-row">
@@ -107,6 +133,9 @@
           <div class="deck-stack deck-stack-1" id="deckStack1" aria-hidden="true"></div>
 
           <article class="flashcard" id="flashcard" tabindex="0" role="button" aria-label="Kartu kata. Tekan Spasi atau klik untuk melihat arti.">
+            <div class="swipe-cue swipe-cue-left" id="swipeCueLeft" aria-hidden="true">Lanjut →</div>
+            <div class="swipe-cue swipe-cue-right" id="swipeCueRight" aria-hidden="true">← Kembali</div>
+
             <div class="card-inner" id="cardInner">
               <!-- Front Face -->
               <div class="card-face card-front" id="cardFront">
@@ -117,7 +146,7 @@
                       <span class="pip-suit" id="frontPipSuit">B2</span>
                     </div>
                     <div class="badges" id="frontBadges"></div>
-                    <button type="button" class="mini-btn" id="btnSpeakFront" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
+                    <button type="button" class="mini-btn" id="btnSpeakFront" title="Dengarkan pelafalan Jerman (Tombol A)" aria-label="Dengarkan pelafalan">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                     </button>
                   </div>
@@ -143,7 +172,7 @@
                       <span class="pip-suit" id="backPipSuit">ID</span>
                     </div>
                     <div class="badges" id="backBadges"></div>
-                    <button type="button" class="mini-btn" id="btnSpeakBack" title="Dengarkan pelafalan (Jerman)" aria-label="Dengarkan pelafalan">
+                    <button type="button" class="mini-btn" id="btnSpeakBack" title="Dengarkan pelafalan Jerman (Tombol A)" aria-label="Dengarkan pelafalan">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                     </button>
                   </div>
@@ -151,7 +180,7 @@
                   <div class="card-center" id="backContent"></div>
 
                   <div class="card-bottom">
-                    <span class="flip-hint">Tap untuk kembali ke sisi depan</span>
+                    <span class="flip-hint">Tap untuk kembali • Geser atas/bawah jika panjang</span>
                     <div class="corner-pip corner-pip-bottom" id="backPipBottom" aria-hidden="true">
                       <span class="pip-num" id="backPipNumBot">#01</span>
                       <span class="pip-suit" id="backPipSuitBot">ID</span>
@@ -196,13 +225,17 @@
         </div>
       </div>
 
-      <!-- Keyboard Shortcuts Legend -->
+      <!-- Keyboard Shortcuts Legend (Rule 2: Shortcuts) -->
       <footer class="shortcuts-bar" aria-hidden="true">
-        <span><kbd>←</kbd> <kbd>→</kbd> Geser</span>
-        <span><kbd>Spasi</kbd> Balik Arti</span>
+        <span><kbd>←</kbd><kbd>→</kbd> Geser</span>
+        <span><kbd>Spasi</kbd> Balik</span>
         <span><kbd>H</kbd> Hafal</span>
         <span><kbd>S</kbd> Sulit</span>
         <span><kbd>A</kbd> Audio</span>
+        <span><kbd>D</kbd> Arah</span>
+        <span><kbd>R</kbd> Acak</span>
+        <span><kbd>Z</kbd> Undo</span>
+        <span><kbd>/</kbd> Cari</span>
       </footer>
     </main>
 
@@ -210,11 +243,34 @@
     <main class="list-stage hidden" id="listView">
       <div class="list-header">
         <span id="listCount">0 kata ditampilkan</span>
-        <button type="button" class="text-btn" id="btnResetProgress">Reset Progres Hafalan</button>
+        <button type="button" class="text-btn text-btn-danger" id="btnResetProgress">Reset Progres Hafalan</button>
       </div>
       <div class="word-table-wrap" id="wordListContainer"></div>
     </main>
   </div>
+
+  <!-- Informative Toast + Easy Undo Bar (Rule 3: Feedback & Rule 6: Reversal) -->
+  <div class="toast-bar hidden" id="toastBar" role="status" aria-live="polite">
+    <span class="toast-msg" id="toastMsg"></span>
+    <button type="button" class="toast-undo hidden" id="btnToastUndo">Urungkan</button>
+  </div>
+
+  <!-- Error Prevention Dialog before Resetting Progress (Rule 4 & Rule 5) -->
+  <dialog class="sync-dialog" id="confirmDialog" aria-labelledby="confirmDialogTitle">
+    <div class="sync-dialog-card">
+      <div class="sync-dialog-head">
+        <h2 id="confirmDialogTitle">Reset Semua Progres Hafalan?</h2>
+        <button type="button" class="icon-btn" id="btnCloseConfirm" aria-label="Tutup">✕</button>
+      </div>
+      <p class="sync-dialog-desc" id="confirmDialogDesc">
+        Semua tanda Sudah Hafal dan Ditandai Sulit akan dikosongkan. Anda masih bisa membatalkan aksi ini lewat tombol Urungkan sesaat setelah reset.
+      </p>
+      <div class="sync-dialog-actions">
+        <button type="button" class="chip-btn" id="btnCancelReset">Batal</button>
+        <button type="button" class="btn-danger" id="btnConfirmReset">Ya, Reset Semua</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog class="sync-dialog" id="syncDialog" aria-labelledby="syncDialogTitle">
     <form method="dialog" class="sync-dialog-card" id="syncForm">
@@ -237,7 +293,7 @@
     </form>
   </dialog>
 
-  <script src="data/words.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="data/words.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

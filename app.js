@@ -35,6 +35,8 @@
   let lastPushAt = 0;
   let consecutiveFailures = 0;
   let syncHalted = false;
+  let toastTimer = null;
+  let lastUndoAction = null;
 
   // DOM Elements
   const el = {
@@ -43,12 +45,15 @@
     btnTheme: document.getElementById("btnTheme"),
     cardsView: document.getElementById("cardsView"),
     listView: document.getElementById("listView"),
+    statScope: document.getElementById("statScope"),
     statTotal: document.getElementById("statTotal"),
     statLearned: document.getElementById("statLearned"),
     statStarred: document.getElementById("statStarred"),
     progressFill: document.getElementById("progressFill"),
     progressPct: document.getElementById("progressPct"),
+    topicPills: document.getElementById("topicPills"),
     searchInput: document.getElementById("searchInput"),
+    btnClearSearch: document.getElementById("btnClearSearch"),
     btnToggleFilters: document.getElementById("btnToggleFilters"),
     filtersRow: document.getElementById("filtersRow"),
     filterTopic: document.getElementById("filterTopic"),
@@ -57,7 +62,14 @@
     btnDirection: document.getElementById("btnDirection"),
     directionLabel: document.getElementById("directionLabel"),
     btnShuffle: document.getElementById("btnShuffle"),
+    btnResetFiltersTop: document.getElementById("btnResetFiltersTop"),
+    completionBanner: document.getElementById("completionBanner"),
+    completionTitle: document.getElementById("completionTitle"),
+    completionDesc: document.getElementById("completionDesc"),
+    btnCompletionShuffle: document.getElementById("btnCompletionShuffle"),
+    btnCompletionAll: document.getElementById("btnCompletionAll"),
     cardCounter: document.getElementById("cardCounter"),
+    deckProgressFill: document.getElementById("deckProgressFill"),
     toggleAutoReveal: document.getElementById("toggleAutoReveal"),
     btnPrev: document.getElementById("btnPrev"),
     btnNext: document.getElementById("btnNext"),
@@ -67,6 +79,8 @@
     cardViewport: document.getElementById("cardViewport"),
     deckStack1: document.getElementById("deckStack1"),
     flashcard: document.getElementById("flashcard"),
+    swipeCueLeft: document.getElementById("swipeCueLeft"),
+    swipeCueRight: document.getElementById("swipeCueRight"),
     frontPipNum: document.getElementById("frontPipNum"),
     frontPipSuit: document.getElementById("frontPipSuit"),
     frontPipNumBot: document.getElementById("frontPipNumBot"),
@@ -93,6 +107,14 @@
     listCount: document.getElementById("listCount"),
     wordListContainer: document.getElementById("wordListContainer"),
     btnResetProgress: document.getElementById("btnResetProgress"),
+    toastBar: document.getElementById("toastBar"),
+    toastMsg: document.getElementById("toastMsg"),
+    btnToastUndo: document.getElementById("btnToastUndo"),
+    confirmDialog: document.getElementById("confirmDialog"),
+    confirmDialogDesc: document.getElementById("confirmDialogDesc"),
+    btnCloseConfirm: document.getElementById("btnCloseConfirm"),
+    btnCancelReset: document.getElementById("btnCancelReset"),
+    btnConfirmReset: document.getElementById("btnConfirmReset"),
     btnSyncModal: document.getElementById("btnSyncModal"),
     syncStatusText: document.getElementById("syncStatusText"),
     syncDialog: document.getElementById("syncDialog"),
@@ -104,6 +126,30 @@
     btnSyncNow: document.getElementById("btnSyncNow"),
     btnDisconnectSync: document.getElementById("btnDisconnectSync")
   };
+
+  function showToast(message, undoFn = null, durationMs = 4500) {
+    if (!el.toastBar || !el.toastMsg) return;
+    clearTimeout(toastTimer);
+    lastUndoAction = typeof undoFn === "function" ? undoFn : null;
+    el.toastMsg.textContent = message;
+    if (el.btnToastUndo) {
+      el.btnToastUndo.classList.toggle("hidden", !lastUndoAction);
+    }
+    el.toastBar.classList.remove("hidden");
+    toastTimer = setTimeout(() => {
+      el.toastBar.classList.add("hidden");
+      lastUndoAction = null;
+    }, durationMs);
+  }
+
+  function runUndo() {
+    if (!lastUndoAction) return;
+    const fn = lastUndoAction;
+    lastUndoAction = null;
+    clearTimeout(toastTimer);
+    if (el.toastBar) el.toastBar.classList.add("hidden");
+    fn();
+  }
 
   function setSyncStatus(status, label) {
     state.syncStatus = status;
@@ -142,6 +188,9 @@
         if (typeof parsed.syncKey === "string") state.syncKey = parsed.syncKey;
         if (typeof parsed.gistId === "string") state.gistId = parsed.gistId;
         if (parsed.theme === "dark" || parsed.theme === "light") state.theme = parsed.theme;
+        if (typeof parsed.topic === "string") state.topic = parsed.topic;
+        if (parsed.direction === "DE_ID" || parsed.direction === "ID_DE") state.direction = parsed.direction;
+        if (typeof parsed.autoReveal === "boolean") state.autoReveal = parsed.autoReveal;
       } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
         state.theme = "dark";
       }
@@ -149,6 +198,8 @@
       // Ignore storage errors
     }
     applyTheme();
+    el.directionLabel.textContent = state.direction === "DE_ID" ? "DE → ID" : "ID → DE";
+    el.toggleAutoReveal.checked = state.autoReveal;
     if (state.syncKey) {
       setSyncStatus(state.dirty ? "pending" : "synced", state.dirty ? "Menyimpan..." : "Tersinkron");
     } else {
@@ -167,7 +218,10 @@
           dirty: state.dirty,
           syncKey: state.syncKey,
           gistId: state.gistId,
-          theme: state.theme
+          theme: state.theme,
+          topic: state.topic,
+          direction: state.direction,
+          autoReveal: state.autoReveal
         })
       );
     } catch {
@@ -399,22 +453,52 @@
   }
 
   function populateFilters() {
-    const topics = new Set();
+    const topicCounts = new Map();
     const poses = new Set();
 
     allWords.forEach((item) => {
-      if (item.topic) topics.add(item.topic);
+      if (item.topic) {
+        topicCounts.set(item.topic, (topicCounts.get(item.topic) || 0) + 1);
+      }
       if (item.pos) poses.add(item.pos);
     });
 
-    Array.from(topics)
-      .sort((a, b) => a.localeCompare(b))
-      .forEach((topic) => {
-        const opt = document.createElement("option");
-        opt.value = topic;
-        opt.textContent = topic;
-        el.filterTopic.appendChild(opt);
+    const sortedTopics = Array.from(topicCounts.keys()).sort((a, b) => a.localeCompare(b));
+
+    // Validate restored topic preference against current dataset
+    if (state.topic !== "all" && !topicCounts.has(state.topic)) {
+      state.topic = "all";
+    }
+
+    sortedTopics.forEach((topic) => {
+      const opt = document.createElement("option");
+      opt.value = topic;
+      opt.textContent = `${topic} (${topicCounts.get(topic)})`;
+      el.filterTopic.appendChild(opt);
+    });
+    el.filterTopic.value = state.topic;
+
+    // Build 1-tap quick topic pills (Rule 2 & Rule 7)
+    if (el.topicPills) {
+      el.topicPills.replaceChildren();
+      const pillDefs = [
+        { value: "all", label: "Semua", count: allWords.length },
+        ...sortedTopics.map((t) => ({ value: t, label: t, count: topicCounts.get(t) }))
+      ];
+      pillDefs.forEach(({ value, label, count }) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "topic-pill";
+        btn.dataset.topic = value;
+        btn.appendChild(document.createTextNode(label));
+        const badge = document.createElement("span");
+        badge.className = "topic-pill-count";
+        badge.textContent = String(count);
+        btn.appendChild(badge);
+        btn.addEventListener("click", () => selectTopic(value));
+        el.topicPills.appendChild(btn);
       });
+    }
 
     Array.from(poses)
       .sort((a, b) => a.localeCompare(b))
@@ -424,6 +508,26 @@
         opt.textContent = pos;
         el.filterPos.appendChild(opt);
       });
+  }
+
+  function selectTopic(topicValue) {
+    state.topic = topicValue;
+    el.filterTopic.value = topicValue;
+    state.shuffledOrder = null;
+    state.currentIndex = 0;
+    state.isFlipped = false;
+    resetCardScroll();
+    saveStorage();
+    render();
+  }
+
+  function updateTopicPillsUI() {
+    if (!el.topicPills) return;
+    el.topicPills.querySelectorAll(".topic-pill").forEach((btn) => {
+      const active = btn.dataset.topic === state.topic;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", String(active));
+    });
   }
 
   function getWordId(item, fallbackIdx) {
@@ -478,7 +582,7 @@
     return span;
   }
 
-  function renderBadges(container, item) {
+  function renderBadges(container, item, id) {
     container.replaceChildren();
     const article = detectArticle(item);
     if (article === "der") container.appendChild(createBadge("Maskulin (der)", "badge-der"));
@@ -488,6 +592,8 @@
 
     if (item.pos) container.appendChild(createBadge(item.pos));
     if (item.topic) container.appendChild(createBadge(item.topic, "badge-topic"));
+    if (id && state.learned.has(id)) container.appendChild(createBadge("✓ Hafal", "badge-das"));
+    if (id && state.starred.has(id)) container.appendChild(createBadge("★ Sulit", "badge-plural"));
   }
 
   function renderGermanSide(container, item) {
@@ -515,6 +621,13 @@
       container.appendChild(smallDe);
     }
 
+    if (showGermanHeader) {
+      const meaningLabel = document.createElement("span");
+      meaningLabel.className = "back-section-label";
+      meaningLabel.textContent = "Arti";
+      container.appendChild(meaningLabel);
+    }
+
     const meaning = document.createElement("p");
     meaning.className = "meaning-main";
     meaning.textContent = item.meaning || "";
@@ -523,6 +636,10 @@
     if (item.example) {
       const box = document.createElement("div");
       box.className = "example-box";
+      const exLabel = document.createElement("span");
+      exLabel.className = "back-section-label";
+      exLabel.textContent = "Contoh Kalimat";
+      box.appendChild(exLabel);
       const exDe = document.createElement("p");
       exDe.className = "example-de";
       exDe.textContent = item.example;
@@ -539,22 +656,48 @@
     if (item.note) {
       const note = document.createElement("div");
       note.className = "note-box";
-      note.textContent = item.note;
+      const noteLabel = document.createElement("span");
+      noteLabel.className = "back-section-label";
+      noteLabel.textContent = "Parafrase & Catatan B2";
+      note.appendChild(noteLabel);
+      note.appendChild(document.createTextNode(item.note));
       container.appendChild(note);
     }
   }
 
   function updateStats() {
-    const total = allWords.length;
-    const learnedCount = allWords.filter((w, i) => state.learned.has(getWordId(w, i))).length;
-    const starredCount = allWords.filter((w, i) => state.starred.has(getWordId(w, i))).length;
+    const scopeWords =
+      state.topic === "all" ? allWords : allWords.filter((w) => w.topic === state.topic);
+    const total = scopeWords.length;
+    const learnedCount = scopeWords.filter((w) => {
+      const origIdx = allWords.indexOf(w);
+      return state.learned.has(getWordId(w, origIdx));
+    }).length;
+    const starredCount = scopeWords.filter((w) => {
+      const origIdx = allWords.indexOf(w);
+      return state.starred.has(getWordId(w, origIdx));
+    }).length;
     const pct = total > 0 ? Math.round((learnedCount / total) * 100) : 0;
 
+    if (el.statScope) {
+      el.statScope.textContent = state.topic === "all" ? "Semua" : state.topic;
+    }
     el.statTotal.textContent = String(total);
     el.statLearned.textContent = String(learnedCount);
     el.statStarred.textContent = String(starredCount);
     el.progressFill.style.width = `${pct}%`;
     el.progressPct.textContent = `${pct}%`;
+
+    // Closure Banner when 100% of current topic is learned (Rule 4)
+    if (el.completionBanner) {
+      const isComplete = total > 0 && learnedCount === total;
+      el.completionBanner.classList.toggle("hidden", !isComplete);
+      if (isComplete) {
+        const scopeLabel = state.topic === "all" ? "seluruh kosakata B2" : state.topic;
+        el.completionTitle.textContent = `Tuntas! ${learnedCount}/${total} kosakata ${scopeLabel} sudah hafal.`;
+        el.btnCompletionAll.classList.toggle("hidden", state.topic === "all");
+      }
+    }
   }
 
   function renderCards() {
@@ -578,6 +721,7 @@
 
     if (!hasWords) {
       el.cardCounter.textContent = "0 / 0";
+      if (el.deckProgressFill) el.deckProgressFill.style.width = "0%";
       el.btnStar.classList.remove("active");
       el.btnLearned.classList.remove("active");
       if (allWords.length === 0) {
@@ -599,10 +743,14 @@
     const article = detectArticle(item);
 
     el.cardCounter.textContent = `${state.currentIndex + 1} / ${total}`;
+    if (el.deckProgressFill) {
+      const deckPct = Math.round(((state.currentIndex + 1) / total) * 100);
+      el.deckProgressFill.style.width = `${deckPct}%`;
+    }
     el.flashcard.setAttribute("data-article", article);
 
     const pipNo = `#${String(state.currentIndex + 1).padStart(2, "0")}`;
-    const frontSuit = article ? article.toUpperCase() : (item.pos ? item.pos.slice(0, 3).toUpperCase() : "B2");
+    const frontSuit = article && article !== "none" ? article.toUpperCase() : (item.pos ? item.pos.slice(0, 3).toUpperCase() : "B2");
     const backSuit = state.direction === "DE_ID" ? "ID" : "DE";
     el.frontPipNum.textContent = pipNo;
     el.frontPipNumBot.textContent = pipNo;
@@ -613,8 +761,8 @@
     el.backPipSuit.textContent = backSuit;
     el.backPipSuitBot.textContent = backSuit;
 
-    renderBadges(el.frontBadges, item);
-    renderBadges(el.backBadges, item);
+    renderBadges(el.frontBadges, item, id);
+    renderBadges(el.backBadges, item, id);
 
     if (state.direction === "DE_ID") {
       renderGermanSide(el.frontContent, item);
@@ -659,6 +807,8 @@
 
       const row = document.createElement("div");
       row.className = "word-row";
+      const art = detectArticle(item);
+      if (art && art !== "none") row.setAttribute("data-article", art);
       row.addEventListener("click", () => {
         state.currentIndex = idx;
         state.isFlipped = false;
@@ -694,13 +844,22 @@
   }
 
   function updateFilterToggleBadge() {
-    if (!el.btnToggleFilters) return;
     let activeCount = 0;
     if (state.topic !== "all") activeCount += 1;
     if (state.pos !== "all") activeCount += 1;
     if (state.status !== "all") activeCount += 1;
-    el.btnToggleFilters.classList.toggle("has-active", activeCount > 0);
-    el.btnToggleFilters.textContent = activeCount > 0 ? `Filter (${activeCount})` : "Filter";
+    const hasSearch = state.search.trim().length > 0;
+
+    if (el.btnToggleFilters) {
+      el.btnToggleFilters.classList.toggle("has-active", activeCount > 0);
+      el.btnToggleFilters.textContent = activeCount > 0 ? `Filter (${activeCount})` : "Filter";
+    }
+    if (el.btnResetFiltersTop) {
+      el.btnResetFiltersTop.classList.toggle("hidden", activeCount === 0 && !hasSearch);
+    }
+    if (el.btnClearSearch) {
+      el.btnClearSearch.classList.toggle("hidden", !hasSearch);
+    }
   }
 
   function resetCardScroll() {
@@ -712,6 +871,7 @@
 
   function render() {
     updateStats();
+    updateTopicPillsUI();
     updateFilterToggleBadge();
     if (state.view === "cards") {
       renderCards();
@@ -792,14 +952,15 @@
     renderCards();
   }
 
-  function toggleCurrentFlag(setObj) {
+  function toggleCurrentFlag(setObj, label) {
     const words = getFilteredWords();
     if (words.length === 0) return;
     const item = words[state.currentIndex];
     const origIdx = allWords.indexOf(item);
     const id = getWordId(item, origIdx >= 0 ? origIdx : state.currentIndex);
 
-    if (setObj.has(id)) setObj.delete(id);
+    const wasPresent = setObj.has(id);
+    if (wasPresent) setObj.delete(id);
     else setObj.add(id);
 
     state.updatedAt = Date.now();
@@ -807,11 +968,26 @@
     saveStorage();
     render();
     schedulePushSync();
+
+    const actionMsg = wasPresent ? `Tanda ${label} dihapus` : `Ditandai ${label}`;
+    showToast(actionMsg, () => {
+      if (wasPresent) setObj.add(id);
+      else setObj.delete(id);
+      state.updatedAt = Date.now();
+      state.dirty = true;
+      saveStorage();
+      render();
+      schedulePushSync();
+      showToast("Perubahan dibatalkan", null, 2000);
+    });
   }
 
   function shuffleDeck() {
     const words = getFilteredWords();
     if (words.length <= 1) return;
+    const prevOrder = state.shuffledOrder ? [...state.shuffledOrder] : null;
+    const prevIndex = state.currentIndex;
+
     // Reset to base filtered list first, then shuffle indices
     state.shuffledOrder = null;
     const base = getFilteredWords();
@@ -826,6 +1002,20 @@
     animateSlide(-1);
     resetCardScroll();
     render();
+
+    showToast(`Urutan ${base.length} kartu diacak`, () => {
+      state.shuffledOrder = prevOrder;
+      state.currentIndex = prevIndex;
+      state.isFlipped = false;
+      resetCardScroll();
+      render();
+      showToast("Urutan kartu dikembalikan", null, 2000);
+    });
+  }
+
+  function setSpeakingUI(isSpeaking) {
+    if (el.btnSpeakFront) el.btnSpeakFront.classList.toggle("is-speaking", isSpeaking);
+    if (el.btnSpeakBack) el.btnSpeakBack.classList.toggle("is-speaking", isSpeaking);
   }
 
   function speakCurrentWord(e) {
@@ -839,6 +1029,10 @@
     const utter = new SpeechSynthesisUtterance(item.word);
     utter.lang = "de-DE";
     utter.rate = 0.95;
+    utter.onstart = () => setSpeakingUI(true);
+    utter.onend = () => setSpeakingUI(false);
+    utter.onerror = () => setSpeakingUI(false);
+    setSpeakingUI(true);
     window.speechSynthesis.speak(utter);
   }
 
@@ -849,11 +1043,15 @@
     state.status = "all";
     state.shuffledOrder = null;
     state.currentIndex = 0;
+    state.isFlipped = false;
     el.searchInput.value = "";
     el.filterTopic.value = "all";
     el.filterPos.value = "all";
     el.filterStatus.value = "all";
+    saveStorage();
+    resetCardScroll();
     render();
+    showToast("Semua filter direset", null, 2200);
   }
 
   function bindEvents() {
@@ -879,12 +1077,20 @@
       render();
     });
 
+    if (el.btnClearSearch) {
+      el.btnClearSearch.addEventListener("click", () => {
+        state.search = "";
+        el.searchInput.value = "";
+        state.shuffledOrder = null;
+        state.currentIndex = 0;
+        state.isFlipped = false;
+        render();
+        el.searchInput.focus();
+      });
+    }
+
     el.filterTopic.addEventListener("change", (e) => {
-      state.topic = e.target.value;
-      state.shuffledOrder = null;
-      state.currentIndex = 0;
-      state.isFlipped = false;
-      render();
+      selectTopic(e.target.value);
     });
 
     el.filterPos.addEventListener("change", (e) => {
@@ -903,17 +1109,39 @@
       render();
     });
 
-    el.btnDirection.addEventListener("click", () => {
+    function toggleDirection() {
       state.direction = state.direction === "DE_ID" ? "ID_DE" : "DE_ID";
-      el.directionLabel.textContent = state.direction === "DE_ID" ? "DE → ID" : "ID → DE";
+      const label = state.direction === "DE_ID" ? "DE → ID" : "ID → DE";
+      el.directionLabel.textContent = label;
       state.isFlipped = false;
+      saveStorage();
+      resetCardScroll();
       renderCards();
-    });
+      showToast(`Mode kartu: ${label}`, null, 2200);
+    }
+
+    el.btnDirection.addEventListener("click", toggleDirection);
 
     el.btnShuffle.addEventListener("click", shuffleDeck);
+    if (el.btnResetFiltersTop) {
+      el.btnResetFiltersTop.addEventListener("click", resetFilters);
+    }
+    if (el.btnCompletionShuffle) {
+      el.btnCompletionShuffle.addEventListener("click", () => {
+        setView("cards");
+        shuffleDeck();
+      });
+    }
+    if (el.btnCompletionAll) {
+      el.btnCompletionAll.addEventListener("click", () => selectTopic("all"));
+    }
+    if (el.btnToastUndo) {
+      el.btnToastUndo.addEventListener("click", runUndo);
+    }
 
     el.toggleAutoReveal.addEventListener("change", (e) => {
       state.autoReveal = e.target.checked;
+      saveStorage();
       renderCards();
     });
 
@@ -927,20 +1155,64 @@
     el.btnSpeakFront.addEventListener("click", speakCurrentWord);
     el.btnSpeakBack.addEventListener("click", speakCurrentWord);
 
-    el.btnStar.addEventListener("click", () => toggleCurrentFlag(state.starred));
-    el.btnLearned.addEventListener("click", () => toggleCurrentFlag(state.learned));
+    el.btnStar.addEventListener("click", () => toggleCurrentFlag(state.starred, "Sulit"));
+    el.btnLearned.addEventListener("click", () => toggleCurrentFlag(state.learned, "Hafal"));
     el.btnResetFilters.addEventListener("click", resetFilters);
 
+    // Error Prevention Dialog before Resetting Progress (Rule 5 & Rule 6)
     el.btnResetProgress.addEventListener("click", () => {
-      if (state.learned.size === 0 && state.starred.size === 0) return;
-      state.learned.clear();
-      state.starred.clear();
-      state.updatedAt = Date.now();
-      state.dirty = true;
-      saveStorage();
-      render();
-      schedulePushSync();
+      if (state.learned.size === 0 && state.starred.size === 0) {
+        showToast("Belum ada progres hafalan untuk direset.", null, 2200);
+        return;
+      }
+      if (el.confirmDialogDesc) {
+        el.confirmDialogDesc.textContent = `Anda akan menghapus ${state.learned.size} tanda Hafal dan ${state.starred.size} tanda Sulit. Anda masih dapat membatalkannya lewat tombol Urungkan sesaat setelah reset.`;
+      }
+      if (el.confirmDialog && typeof el.confirmDialog.showModal === "function") {
+        el.confirmDialog.showModal();
+      }
     });
+
+    if (el.btnCloseConfirm) {
+      el.btnCloseConfirm.addEventListener("click", () => el.confirmDialog.close());
+    }
+    if (el.btnCancelReset) {
+      el.btnCancelReset.addEventListener("click", () => el.confirmDialog.close());
+    }
+    if (el.confirmDialog) {
+      el.confirmDialog.addEventListener("click", (e) => {
+        if (e.target === el.confirmDialog) el.confirmDialog.close();
+      });
+    }
+    if (el.btnConfirmReset) {
+      el.btnConfirmReset.addEventListener("click", () => {
+        const prevLearned = new Set(state.learned);
+        const prevStarred = new Set(state.starred);
+        state.learned.clear();
+        state.starred.clear();
+        state.updatedAt = Date.now();
+        state.dirty = true;
+        saveStorage();
+        render();
+        schedulePushSync();
+        el.confirmDialog.close();
+
+        showToast(
+          "Semua progres hafalan direset.",
+          () => {
+            state.learned = prevLearned;
+            state.starred = prevStarred;
+            state.updatedAt = Date.now();
+            state.dirty = true;
+            saveStorage();
+            render();
+            schedulePushSync();
+            showToast("Progres hafalan berhasil dipulihkan!", null, 2400);
+          },
+          6000
+        );
+      });
+    }
 
     // Sync dialog controls
     el.btnSyncModal.addEventListener("click", () => {
@@ -1095,12 +1367,24 @@
             const deckRot = -1.4 + progress * 1.4;
             el.deckStack1.style.transform = `translateY(${y}px) scale(${scale}) rotate(${deckRot}deg)`;
           }
+
+          if (words.length > 1 && el.swipeCueLeft && el.swipeCueRight) {
+            const cueAlpha = Math.min(0.95, Math.max(0, (Math.abs(dampedDx) - 24) / 70));
+            el.swipeCueLeft.style.opacity = dampedDx < 0 ? String(cueAlpha) : "0";
+            el.swipeCueRight.style.opacity = dampedDx > 0 ? String(cueAlpha) : "0";
+          }
         }
       },
       { passive: false }
     );
 
+    function resetSwipeCues() {
+      if (el.swipeCueLeft) el.swipeCueLeft.style.opacity = "0";
+      if (el.swipeCueRight) el.swipeCueRight.style.opacity = "0";
+    }
+
     function finishTouchDrag() {
+      resetSwipeCues();
       if (touchIgnored) {
         touchIgnored = false;
         return;
@@ -1148,14 +1432,42 @@
     el.cardViewport.addEventListener("touchend", finishTouchDrag, { passive: true });
     el.cardViewport.addEventListener("touchcancel", finishTouchDrag, { passive: true });
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts (Rule 2: Shortcuts & Rule 6: Reversal)
     document.addEventListener("keydown", (e) => {
-      if (el.syncDialog && el.syncDialog.open) return;
+      if ((el.syncDialog && el.syncDialog.open) || (el.confirmDialog && el.confirmDialog.open)) return;
       const active = document.activeElement;
       const tag = active && active.tagName;
+
+      if (e.key === "Escape") {
+        if (tag === "INPUT" && el.searchInput.value) {
+          state.search = "";
+          el.searchInput.value = "";
+          render();
+        } else if (active && typeof active.blur === "function") {
+          active.blur();
+        }
+        return;
+      }
+
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+
+      if (e.key === "/") {
+        e.preventDefault();
+        el.searchInput.focus();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (lastUndoAction) {
+          e.preventDefault();
+          runUndo();
+        }
+        return;
+      }
+
       if (state.view !== "cards") return;
 
+      const lower = e.key.toLowerCase();
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         stepCard(-1);
@@ -1166,12 +1478,18 @@
         if (tag === "BUTTON" || tag === "A") return;
         e.preventDefault();
         flipCard();
-      } else if (e.key.toLowerCase() === "h") {
-        toggleCurrentFlag(state.learned);
-      } else if (e.key.toLowerCase() === "s") {
-        toggleCurrentFlag(state.starred);
-      } else if (e.key.toLowerCase() === "a") {
+      } else if (lower === "h") {
+        toggleCurrentFlag(state.learned, "Hafal");
+      } else if (lower === "s") {
+        toggleCurrentFlag(state.starred, "Sulit");
+      } else if (lower === "a") {
         speakCurrentWord();
+      } else if (lower === "d") {
+        toggleDirection();
+      } else if (lower === "r") {
+        shuffleDeck();
+      } else if (lower === "z") {
+        runUndo();
       }
     });
 
