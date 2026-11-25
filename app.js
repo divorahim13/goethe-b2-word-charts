@@ -693,8 +693,26 @@
     el.wordListContainer.appendChild(frag);
   }
 
+  function updateFilterToggleBadge() {
+    if (!el.btnToggleFilters) return;
+    let activeCount = 0;
+    if (state.topic !== "all") activeCount += 1;
+    if (state.pos !== "all") activeCount += 1;
+    if (state.status !== "all") activeCount += 1;
+    el.btnToggleFilters.classList.toggle("has-active", activeCount > 0);
+    el.btnToggleFilters.textContent = activeCount > 0 ? `Filter (${activeCount})` : "Filter";
+  }
+
+  function resetCardScroll() {
+    if (!el.flashcard) return;
+    el.flashcard.querySelectorAll(".poker-frame").forEach((frame) => {
+      frame.scrollTop = 0;
+    });
+  }
+
   function render() {
     updateStats();
+    updateFilterToggleBadge();
     if (state.view === "cards") {
       renderCards();
     } else {
@@ -755,6 +773,7 @@
     el.flashcard.classList.remove("is-dragging", "is-springing", "is-entering");
     void el.flashcard.offsetWidth;
     el.flashcard.classList.add("is-entering");
+    resetCardScroll();
     renderCards();
   }
 
@@ -769,6 +788,7 @@
     } else {
       state.isFlipped = !state.isFlipped;
     }
+    resetCardScroll();
     renderCards();
   }
 
@@ -803,7 +823,8 @@
     state.shuffledOrder = indices;
     state.currentIndex = 0;
     state.isFlipped = false;
-    animateSlide("slide-next");
+    animateSlide(-1);
+    resetCardScroll();
     render();
   }
 
@@ -932,6 +953,12 @@
       el.syncDialog.close();
     });
 
+    el.syncDialog.addEventListener("click", (e) => {
+      if (e.target === el.syncDialog) {
+        el.syncDialog.close();
+      }
+    });
+
     el.syncForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const key = el.syncKeyInput.value.trim();
@@ -1006,22 +1033,33 @@
       }
     });
 
-    // Live poker-card touch drag + swipe
+    // Live poker-card touch drag + swipe (with safe vertical scroll inside tall cards)
     let touchStartX = 0;
     let touchStartY = 0;
     let touchStartTime = 0;
     let dragMode = null; // null | "horizontal" | "vertical"
     let currentDx = 0;
+    let maxDy = 0;
+    let touchIgnored = false;
 
     el.cardViewport.addEventListener(
       "touchstart",
       (e) => {
-        if (e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) return;
+        if (e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) {
+          touchIgnored = true;
+          return;
+        }
+        if (e.target && e.target.closest("button, a, input, select")) {
+          touchIgnored = true;
+          return;
+        }
+        touchIgnored = false;
         touchStartX = e.changedTouches[0].clientX;
         touchStartY = e.changedTouches[0].clientY;
         touchStartTime = Date.now();
         dragMode = null;
         currentDx = 0;
+        maxDy = 0;
         el.flashcard.classList.remove("is-springing", "is-entering");
       },
       { passive: true }
@@ -1030,13 +1068,14 @@
     el.cardViewport.addEventListener(
       "touchmove",
       (e) => {
-        if (e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) return;
+        if (touchIgnored || e.changedTouches.length !== 1 || el.flashcard.classList.contains("hidden")) return;
         const dx = e.changedTouches[0].clientX - touchStartX;
         const dy = e.changedTouches[0].clientY - touchStartY;
+        maxDy = Math.max(maxDy, Math.abs(dy));
 
         if (!dragMode) {
           if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-          dragMode = Math.abs(dx) > Math.abs(dy) * 1.1 ? "horizontal" : "vertical";
+          dragMode = Math.abs(dx) > Math.abs(dy) * 1.15 ? "horizontal" : "vertical";
         }
 
         if (dragMode === "horizontal") {
@@ -1062,6 +1101,10 @@
     );
 
     function finishTouchDrag() {
+      if (touchIgnored) {
+        touchIgnored = false;
+        return;
+      }
       if (dragMode === "horizontal") {
         const elapsed = Date.now() - touchStartTime;
         const velocity = Math.abs(currentDx) / Math.max(1, elapsed);
@@ -1090,9 +1133,16 @@
             el.flashcard.style.transform = "";
           }, 280);
         }
+      } else if (dragMode === "vertical" && maxDy > 10) {
+        // Prevent accidental flip right after scrolling inside a long card face
+        didSwipeRecently = true;
+        setTimeout(() => {
+          didSwipeRecently = false;
+        }, 220);
       }
       dragMode = null;
       currentDx = 0;
+      maxDy = 0;
     }
 
     el.cardViewport.addEventListener("touchend", finishTouchDrag, { passive: true });

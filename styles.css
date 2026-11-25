@@ -94,7 +94,7 @@ select {
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
-  padding: 14px 16px 28px;
+  padding: calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
   min-height: 100dvh;
   overflow-x: clip;
   display: flex;
@@ -338,6 +338,13 @@ select {
 .filter-toggle-btn {
   display: none;
   flex-shrink: 0;
+  gap: 5px;
+}
+
+.filter-toggle-btn.has-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .filters-row {
@@ -417,7 +424,8 @@ select {
   align-items: center;
   justify-content: center;
   gap: 20px;
-  padding: 4px 0 12px;
+  padding: 6px 0 18px;
+  overflow-x: clip;
 }
 
 .nav-arrow {
@@ -550,9 +558,22 @@ select {
   display: flex;
 }
 
+.card-front {
+  pointer-events: auto;
+}
+
 .card-back {
   transform: rotateY(180deg);
   background: var(--card-back-bg);
+  pointer-events: none;
+}
+
+.flashcard.is-flipped .card-front {
+  pointer-events: none;
+}
+
+.flashcard.is-flipped .card-back {
+  pointer-events: auto;
 }
 
 /* Poker Card Inner Border Frame */
@@ -564,9 +585,11 @@ select {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   position: relative;
 }
 
@@ -584,6 +607,7 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .corner-pip {
@@ -661,9 +685,9 @@ select {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  flex: 1 0 auto;
   gap: 10px;
   padding: 8px 4px;
-  margin: auto 0;
 }
 
 .word-main {
@@ -717,6 +741,7 @@ select {
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .flip-hint {
@@ -871,7 +896,10 @@ kbd {
   background: var(--surface);
   color: var(--text);
   padding: 0;
+  margin: auto;
   width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   box-shadow: var(--shadow);
 }
 
@@ -946,8 +974,23 @@ kbd {
 /* Mobile Responsive */
 @media (max-width: 640px) {
   .app-shell {
-    padding: 10px 12px 22px;
-    gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    gap: 8px;
+  }
+
+  .topbar {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .brand {
+    gap: 7px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .brand > div {
+    min-width: 0;
   }
 
   .brand-sub {
@@ -955,19 +998,80 @@ kbd {
   }
 
   .brand-title {
-    font-size: 0.94rem;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .brand-badge {
-    width: 32px;
-    height: 32px;
-    font-size: 0.84rem;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+  }
+
+  .topbar-actions {
+    gap: 5px;
+  }
+
+  .sync-pill {
+    padding: 5px 8px;
+    font-size: 0.74rem;
+    min-height: 34px;
+  }
+
+  .seg-btn {
+    padding: 4px 8px;
+    font-size: 0.76rem;
+    min-height: 28px;
+  }
+
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .stats-bar {
+    padding: 7px 10px;
+    gap: 6px;
+    border-radius: 12px;
+  }
+
+  .stats-meta {
+    gap: 5px;
+  }
+
+  .stat-pill {
+    font-size: 0.73rem;
+    padding: 2px 7px;
+  }
+
+  .progress-wrap {
+    max-width: none;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Prevent iOS Safari forced zoom on focus (< 16px) */
+  .search-box input,
+  .filters-row select,
+  .sync-input {
+    font-size: 16px;
+  }
+
+  .search-box input {
+    padding: 9px 10px 9px 34px;
+    min-height: 42px;
   }
 
   .filter-toggle-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-height: 42px;
+    padding: 0 12px;
+    white-space: nowrap;
   }
 
   .filters-row {
@@ -975,28 +1079,164 @@ kbd {
   }
 
   .filters-row.is-open {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
   }
 
-  .progress-wrap {
-    max-width: none;
+  .filters-row.is-open #filterTopic {
+    grid-column: 1 / -1;
+  }
+
+  .filters-row.is-open select,
+  .filters-row.is-open .chip-btn {
     width: 100%;
+    min-height: 42px;
+    text-align: center;
+  }
+
+  .filters-row.is-open select {
+    text-align: left;
+  }
+
+  .main-stage {
+    gap: 8px;
+  }
+
+  .deck-header {
+    max-width: 390px;
+    font-size: 0.8rem;
+  }
+
+  .carousel-row {
+    padding: 4px 4px 16px;
+    gap: 0;
   }
 
   .nav-arrow {
     display: none;
   }
 
+  .card-viewport {
+    width: 100%;
+    max-width: 390px;
+    height: clamp(350px, 50dvh, 455px);
+  }
+
+  .card-face {
+    padding: 8px;
+  }
+
+  .poker-frame {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .card-center {
+    gap: 8px;
+    padding: 6px 2px;
+  }
+
+  .word-main {
+    font-size: clamp(1.25rem, 5.4vw, 1.65rem);
+  }
+
+  .meaning-main {
+    font-size: clamp(1.06rem, 4.4vw, 1.32rem);
+  }
+
+  .example-box {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .example-id {
+    font-size: 0.76rem;
+  }
+
+  .note-box {
+    font-size: 0.74rem;
+    padding: 5px 8px;
+    width: 100%;
+    text-align: left;
+  }
+
+  .flip-hint {
+    font-size: 0.68rem;
+  }
+
+  .card-controls {
+    max-width: 390px;
+    gap: 7px;
+  }
+
   .mobile-arrows {
     display: flex;
+    gap: 6px;
+  }
+
+  .mobile-arrows .chip-btn {
+    min-height: 44px;
+    padding: 8px 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .btn-flip-mobile {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-soft);
+  }
+
+  .action-btn {
+    min-height: 44px;
+    padding: 9px 10px;
+    font-size: 0.84rem;
+    white-space: nowrap;
   }
 
   .shortcuts-bar {
     display: none;
   }
 
+  .list-header {
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .word-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 11px 12px;
+  }
+
+  .word-row-meta {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 375px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .card-viewport {
-    max-width: 304px;
-    height: 410px;
+    height: clamp(320px, 47dvh, 410px);
+  }
+
+  .mobile-arrows .chip-btn {
+    font-size: 0.76rem;
+    padding: 8px 4px;
   }
 }

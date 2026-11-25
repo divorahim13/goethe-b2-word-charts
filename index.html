@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="Word Charts interaktif untuk menghafal kosakata (Wortschatz) Goethe-Zertifikat B2 — ringan, cepat, dan responsif." />
   <title>Goethe B2 — Word Charts</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
 </head>
 <body>
   <div class="app-shell">
@@ -181,9 +181,9 @@
       <!-- Mobile Bottom Nav + Card Mastery Actions -->
       <div class="card-controls">
         <div class="mobile-arrows">
-          <button type="button" class="chip-btn" id="btnPrevMobile">← Sebelumnya</button>
-          <button type="button" class="chip-btn" id="btnFlipMobile">Lihat Arti</button>
-          <button type="button" class="chip-btn" id="btnNextMobile">Berikutnya →</button>
+          <button type="button" class="chip-btn" id="btnPrevMobile" aria-label="Kartu sebelumnya">← Kembali</button>
+          <button type="button" class="chip-btn btn-flip-mobile" id="btnFlipMobile">Lihat Arti</button>
+          <button type="button" class="chip-btn" id="btnNextMobile" aria-label="Kartu berikutnya">Lanjut →</button>
         </div>
 
         <div class="mastery-actions" id="masteryActions">
@@ -237,7 +237,7 @@
     </form>
   </dialog>
 
-  <script src="data/words.js"></script>
-  <script src="app.js"></script>
+  <script src="data/words.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
